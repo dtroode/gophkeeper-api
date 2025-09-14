@@ -1,0 +1,113 @@
+syntax = "proto3";
+
+package api;
+
+option go_package = "github.com/dtroode/gophkeeper-api/proto";
+
+enum RecordType {
+  UNKNOWN = 0;
+  LOGIN = 1;
+  CARD = 2;
+  NOTE = 3;
+  BINARY = 4;
+}
+
+message RecordMetadata {
+  string record_id = 7; // server-side ID of the record
+  string name = 1;
+  string description = 2;
+  bytes encrypted_key = 3;
+  string alg = 4;
+  RecordType type = 5;
+  int64 chunk_size = 6; // encrypted chunk size (bytes); 1 message = 1 chunk
+  string request_id = 8; // idempotency key (UUID)
+}
+
+message CreateRecordRequest {
+  RecordMetadata metadata = 1;
+  bytes encrypted_data = 2;
+}
+
+message CreateRecordResponse {
+  string record_id = 1;
+  bool success = 2;
+  string error_message = 3;
+}
+
+message CreateRecordStreamRequest {
+  oneof request {
+    RecordMetadata metadata = 1;     
+    bytes data_chunk = 2;           
+  }
+}
+
+message CreateRecordStreamResponse {
+  string record_id = 1;
+  bool success = 2;
+  string error_message = 3;
+  int64 bytes_received = 4;
+}
+
+message ListRecordsRequest {
+  RecordType type_filter = 1;
+  int32 page_size = 2;
+  string page_token = 3;
+  int64 updated_after = 4;   // optional: server timestamp to request delta
+  bool include_deleted = 5;  // optional: include tombstones for deletions
+}
+
+message Tombstone {
+  string record_id = 1;
+  int64 deleted_at = 2; // server timestamp of deletion
+}
+
+message ListRecordsResponse {
+  repeated RecordMetadata records = 1;
+  string next_page_token = 2;
+  int64 server_time = 3;                // server timestamp to set next last_sync_at
+  repeated Tombstone tombstones = 4;    // deletions since updated_after
+}
+
+message GetRecordRequest {
+  string record_id = 1;
+}
+
+message GetRecordResponse {
+  RecordMetadata metadata = 1;
+  bytes encrypted_data = 2;
+  bool success = 3;
+  string error_message = 4;
+}
+
+message GetRecordStreamRequest {
+  string record_id = 1;
+}
+
+message GetRecordStreamResponse {
+  oneof response {
+    RecordMetadata metadata = 1;    
+    bytes data_chunk = 2;         
+  }
+  bool is_last_chunk = 3;
+  string error_message = 4;
+}
+
+message DeleteRecordRequest {
+  string record_id = 1;
+}
+
+message DeleteRecordResponse {
+  bool success = 1;
+  string error_message = 2;
+}
+
+service API {
+  rpc CreateRecord(CreateRecordRequest) returns (CreateRecordResponse);
+  rpc CreateRecordStream(stream CreateRecordStreamRequest) returns (CreateRecordStreamResponse);
+  
+  rpc ListRecords(ListRecordsRequest) returns (ListRecordsResponse);
+  rpc GetRecord(GetRecordRequest) returns (GetRecordResponse);
+  rpc GetRecordStream(GetRecordStreamRequest) returns (stream GetRecordStreamResponse);
+  
+  rpc DeleteRecord(DeleteRecordRequest) returns (DeleteRecordResponse);
+}
